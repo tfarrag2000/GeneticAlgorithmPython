@@ -1,16 +1,18 @@
-import numpy
-import random
-import matplotlib.pyplot
 import pickle
+import random
 import time
 
+import matplotlib.pyplot
+import numpy
+
+
 class GA:
-    def __init__(self, 
-                 num_generations, 
-                 num_parents_mating, 
+    def __init__(self,
+                 num_generations,
+                 num_parents_mating,
                  fitness_func,
                  initial_population=None,
-                 sol_per_pop=None, 
+                 sol_per_pop=None,
                  num_genes=None,
                  init_range_low=-4,
                  init_range_high=4,
@@ -25,7 +27,8 @@ class GA:
                  random_mutation_min_val=-1.0,
                  random_mutation_max_val=1.0,
                  callback_generation=None,
-                 delay_after_gen=0.0):
+                 delay_after_gen=0.0,
+                 genes_range_dict=None):
 
         """
         The constructor of the GA class accepts all parameters required to create an instance of the GA class. It validates such parameters.
@@ -35,7 +38,10 @@ class GA:
 
         fitness_func: Accepts a function that must accept 2 parameters (a single solution and its index in the population) and return the fitness value of the solution. Available starting from PyGAD 1.0.17 until 1.0.20 with a single parameter representing the solution. Changed in PyGAD 2.0.0 and higher to include the second parameter representing the solution index.
 
-        initial_population: A user-defined initial population. It is useful when the user wants to start the generations with a custom initial population. It defaults to None which means no initial population is specified by the user. In this case, PyGAD creates an initial population using the 'sol_per_pop' and 'num_genes' parameters. An exception is raised if the 'initial_population' is None while any of the 2 parameters ('sol_per_pop' or 'num_genes') is also None.
+        initial_population: A user-defined initial population.
+                            It is useful when the user wants to start the generations with a custom initial population.
+                            It defaults to None which means no initial population is specified by the user.
+                            In this case, PyGAD creates an initial population using the 'sol_per_pop' and 'num_genes' parameters. An exception is raised if the 'initial_population' is None while any of the 2 parameters ('sol_per_pop' or 'num_genes') is also None.
         sol_per_pop: Number of solutions in the population. 
         num_genes: Number of parameters in the function.
 
@@ -64,6 +70,8 @@ class GA:
 
         self.init_range_low = init_range_low
         self.init_range_high = init_range_high
+        self.genes_range_dict=genes_range_dict
+
 
         if initial_population is None:
             if (sol_per_pop is None) or (num_genes is None):
@@ -81,7 +89,10 @@ class GA:
                 # Inside the initialize_population() method, the initial_population attribute is assigned to keep the initial population accessible.
                 self.num_genes = num_genes # Number of genes in the solution.
                 self.sol_per_pop = sol_per_pop # Number of solutions in the population.
-                self.initialize_population(self.init_range_low, self.init_range_high)
+                if mutation_type == "random_dict":
+                    self.initialize_population_dict()
+                else:
+                    self.initialize_population(self.init_range_low, self.init_range_high)
             else:
                 raise TypeError("The expected type of both the sol_per_pop and num_genes parameters is int but {sol_per_pop_type} and {num_genes_type} found.".format(sol_per_pop_type=type(sol_per_pop), num_genes_type=type(num_genes)))
         elif numpy.array(initial_population).ndim != 2:
@@ -117,7 +128,9 @@ class GA:
             self.crossover = None
         else:
             self.valid_parameters = False
-            raise ValueError("Undefined crossover type. \nThe assigned value to the crossover_type ({crossover_type}) argument does not refer to one of the supported crossover types which are: \n-single_point (for single point crossover)\n-two_points (for two points crossover)\n-uniform (for uniform crossover).\n".format(crossover_type=crossover_type))
+            raise ValueError(
+                "Undefined crossover type. \nThe assigned value to the crossover_type ({crossover_type}) argument does not refer to one of the supported crossover types which are: \n-single_point (for single point crossover)\n-two_points (for two points crossover)\n-uniform (for uniform crossover).\n".format(
+                    crossover_type=crossover_type))
 
         self.crossover_type = crossover_type
 
@@ -125,6 +138,8 @@ class GA:
         # Validating the mutation type: mutation_type
         if (mutation_type == "random"):
             self.mutation = self.random_mutation
+        elif (mutation_type == "random_dict"):
+            self.mutation = self.random_dict_mutation
         elif (mutation_type == "swap"):
             self.mutation = self.swap_mutation
         elif (mutation_type == "scramble"):
@@ -282,12 +297,49 @@ class GA:
         # Population size = (number of chromosomes, number of genes per chromosome)
         self.pop_size = (self.sol_per_pop,self.num_genes) # The population will have sol_per_pop chromosome where each chromosome has num_genes genes.
         # Creating the initial population randomly.
-        self.population = numpy.random.uniform(low=low, 
-                                               high=high, 
+        self.population = numpy.random.uniform(low=low,
+                                               high=high,
                                                size=self.pop_size) # A NumPy array holding the initial population.
-        
+        print(self.population)
+        print(type(self.population))
+
         # Keeping the initial population in the initial_population attribute.
         self.initial_population = self.population.copy()
+
+    def initialize_population_dict(self):
+
+        """
+        Creates an initial population randomly as a NumPy array. The array is saved in the instance attribute named 'population'.
+
+        low: The lower value of the random range from which the gene values in the initial population are selected. It defaults to -4. Available in PyGAD 1.0.20 and higher.
+        high: The upper value of the random range from which the gene values in the initial population are selected. It defaults to -4. Available in PyGAD 1.0.20.
+
+        This method assigns the values of the following 3 instance attributes:
+            1. pop_size: Size of the population.
+            2. population: Initially, holds the initial population and later updated after each generation.
+            3. init_population: Keeping the initial population.
+        """
+        # Population size = (number of chromosomes, number of genes per chromosome)
+        self.pop_size = (self.sol_per_pop,
+                         self.num_genes)  # The population will have sol_per_pop chromosome where each chromosome has num_genes genes.
+        # Creating the initial population randomly.
+        self.population=[]
+        for i in range(self.sol_per_pop) :
+            chromosome = []
+            for key in list(self.genes_range_dict.keys()):
+                random_value_dict = random.choice(self.genes_range_dict[key])
+                chromosome.append(random_value_dict)
+
+            self.population.append(chromosome)
+
+        self.population=numpy.array (self.population)
+        print(self.population)
+        print(type(self.population))
+
+        # Keeping the initial population in the initial_population attribute.
+        self.initial_population = self.population.copy()
+
+
 
     def cal_pop_fitness(self):
 
@@ -627,6 +679,33 @@ class GA:
                 # If the mutation_by_replacement attribute is False, then the random value is added to the gene value.
                 else:
                     offspring[offspring_idx, gene_idx] = offspring[offspring_idx, gene_idx] + random_value
+        return offspring
+
+    def random_dict_mutation(self, offspring):
+        """
+        Applies the random mutation which changes the values of a number of genes randomly by selecting a random value between random_mutation_min_val and random_mutation_max_val to be added to the selected genes.
+        It accepts a single parameter:
+            -offspring: The offspring to mutate.
+        It returns an array of the mutated offspring.
+        """
+
+        if self.mutation_num_genes == None:
+            self.mutation_num_genes = numpy.uint32((self.mutation_percent_genes * offspring.shape[1]) / 100)
+            # Based on the percentage of genes, if the number of selected genes for mutation is less than the least possible value which is 1, then the number will be set to 1.
+            if self.mutation_num_genes == 0:
+                self.mutation_num_genes = 1
+        mutation_indices = numpy.array(random.sample(range(0, offspring.shape[1]), self.mutation_num_genes))
+        # Random mutation changes a single gene in each offspring randomly.
+        for offspring_idx in range(offspring.shape[0]):
+            for gene_idx in mutation_indices:
+                # select a random value from the dictionary.
+                gene_name=list(self.genes_range_dict.keys())[gene_idx]
+                random_value_dict = random.choice(self.genes_range_dict[gene_name])
+                self.mutation_by_replacement = True
+
+                # If the mutation_by_replacement attribute is True, then the random value replaces the current gene value.
+                if self.mutation_by_replacement:
+                    offspring[offspring_idx, gene_idx] = random_value_dict
         return offspring
 
     def swap_mutation(self, offspring):
